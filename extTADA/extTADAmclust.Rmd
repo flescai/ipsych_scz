@@ -1,0 +1,683 @@
+---
+title: "extTADAmclust"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r knitr, echo=FALSE}
+setwd("/pca/extTADAanalysis")
+library(knitr)
+options(useHTTPS=FALSE)
+opts_chunk$set(message=FALSE, error=FALSE, warning=FALSE, tidy=TRUE, tidy.opts=list(blank=FALSE, width.cutoff=80), cache=TRUE, dev="png", cache.lazy = FALSE)
+library(pander)
+library(tidyverse)
+#load("/originalData/URVcleaned_pedfile_withAllCovars.RData")
+library(mclust)
+```
+
+# Partition the sample
+
+## Clustering of Covariates matrix
+
+```{r PartitionDBS}
+DBSbic = mclustBIC(DBSPedClean[c(5,7:16,27:33)], G = 2:6)
+plot(DBSbic)
+```
+
+```{r DBSclust}
+DBSclust = Mclust(DBSPedClean[c(5,7:16,27:33)], x=DBSbic)
+summary(DBSclust, parameters = T)
+#plot(DBSclust, what = "classification")
+table(DBSclust$classification,DBSPedClean$STATUS)
+table(DBSclust$classification,DBSPedClean$SEX)
+```
+
+
+The result of this show that giving a range of clusters between 2 and 6, the DBS samples partition in 3 cluster.
+
+
+Partition the BGI samples
+
+```{r PartitionClin}
+Clinbic = mclustBIC(ClinPedClean[c(5,7:16,27:30)], G = 2:3)
+plot(Clinbic)
+Clinclust = Mclust(ClinPedClean[c(5,7:16,27:30)], x=Clinbic)
+summary(Clinclust, parameters = T)
+#plot(Clinclust, what = "classification")
+table(Clinclust$classification,ClinPedClean$STATUS)
+table(Clinclust$classification,ClinPedClean$SEX)
+```
+
+In this case, I choose to limit the number of clusters to 3.
+
+Partition the Swedish samples.
+
+```{r PartitionSWE}
+SWEbic = mclustBIC(SWEPedClean[c(5,7:16,27:30)], G = 2:3)
+plot(SWEbic)
+SWEclust = Mclust(SWEPedClean[c(5,7:16,27:30)], x=SWEbic)
+summary(SWEclust, parameters = T)
+#plot(SWEclust, what = "classification")
+table(SWEclust$classification,SWEPedClean$STATUS)
+table(SWEclust$classification,SWEPedClean$SEX)
+```
+
+The dataset seems to be pretty heterogenous, as far as the covariate matrix is concerned, and I choose again 3 clusters maximum.
+
+They all need to be verified for correlation with/without covariates, in order to be accepted.
+
+
+## Test the linear model with / without covariates.
+
+### add pLIcounts
+
+The pLI counts were not present in the original matrix with the covariates, so they need to be added from the files where they have been calculated
+
+```{r pLIcounts}
+plisource = "/pca/analysis/"
+pLIbySampleDBS <- readRDS(paste0(plisource,"pLIbySampleDBS.RData"))
+pLIbySampleClin <- readRDS(paste0(plisource,"pLIbySampleClin.RData"))
+pLIbySampleSWE <- readRDS(paste0(plisource,"pLIbySampleSWE.RData"))
+#
+DBSdataURVClean = DBSdataURVClean %>%
+  left_join(pLIbySampleDBS, by = c("IND" = "sample"))
+ClindataURVClean = ClindataURVClean %>%
+  left_join(pLIbySampleClin, by = c("IND" = "sample"))
+SWEdataURVClean = SWEdataURVClean %>%
+  left_join(pLIbySampleSWE, by = c("IND" = "sample"))
+DBSdataURVClean$ndURVpLI = DBSdataURVClean$nURVdistruptive + DBSdataURVClean$nURVdamaging
+ClindataURVClean$ndURVpLI = ClindataURVClean$nURVdistruptive + ClindataURVClean$nURVdamaging
+SWEdataURVClean$ndURVpLI = SWEdataURVClean$nURVdistruptive + SWEdataURVClean$nURVdamaging
+DBSdataURVClean$scz = DBSdataURVClean$STATUS
+DBSdataURVClean$sczLogi = DBSdataURVClean$STATUS - 1
+#
+ClindataURVClean$scz = ClindataURVClean$STATUS
+ClindataURVClean$sczLogi = ClindataURVClean$STATUS - 1
+#
+SWEdataURVClean$scz = SWEdataURVClean$STATUS
+SWEdataURVClean$sczLogi = SWEdataURVClean$STATUS - 1
+```
+
+
+### Split the datasets
+
+First of all let's merge the PED file with the covariates and the sample counts, in order to make the tests at genome-wide level (not checking on each single gene).
+Let's split the URVclean datasets according to the classifications.
+
+First for the DBS
+
+```{r splitDBS}
+DBSdataURVCleanSplit1 = DBSdataURVClean[which(DBSclust$classification == 1),]
+DBSdataURVCleanSplit2 = DBSdataURVClean[which(DBSclust$classification == 2),]
+DBSdataURVCleanSplit3 = DBSdataURVClean[which(DBSclust$classification == 3),]
+```
+
+Then the Clin BGS
+
+
+```{r splitClin}
+ClindataURVCleanSplit1 = ClindataURVClean[which(Clinclust$classification == 1),]
+ClindataURVCleanSplit2 = ClindataURVClean[which(Clinclust$classification == 2),]
+ClindataURVCleanSplit3 = ClindataURVClean[which(Clinclust$classification == 3),]
+```
+
+Then the Swedish
+
+
+```{r splitSWE}
+SWEdataURVCleanSplit1 = SWEdataURVClean[which(SWEclust$classification == 1),]
+SWEdataURVCleanSplit2 = SWEdataURVClean[which(SWEclust$classification == 2),]
+SWEdataURVCleanSplit3 = SWEdataURVClean[which(SWEclust$classification == 3),]
+```
+
+
+### Logistic models with and without covariates
+
+
+```{r useFunctionsStats}
+## standard error for bar plots
+stde <- function(x) sd(x[!is.na(x)])/sqrt(length(x[!is.na(x)]))
+## NA become zero
+na.zero <- function(x) {replace(x, is.na(x), 0)}
+## Get Tidy from Giulio
+get_tidy <- function(model, term, exponentiate = FALSE) {
+  estimate <- unname(coef(model)[term])
+  std.error <- unname(sqrt(diag(vcov(model)))[term])
+  statistic <- unname(coef(model)[term] / sqrt(diag(vcov(model)))[term])
+  p.value <- min(pnorm(statistic), pnorm(statistic, lower.tail = FALSE)) * 2
+  conf.low <- unname(estimate - 1.96 * std.error)
+  conf.high <- unname(estimate + 1.96 * std.error)
+  if (exponentiate) {
+    return(list(term = term, estimate = exp(estimate), std.error = std.error, statistic = statistic, p.value = p.value, conf.low = exp(conf.low), conf.high = exp(conf.high)))
+  } else {
+    return(list(term = term, estimate = estimate, std.error = std.error, statistic = statistic, p.value = p.value, conf.low = conf.low, conf.high = conf.high))
+  }
+}
+
+### DBS covariates
+
+calcStatsCovDBS <- function(type, dataset, datasetName){
+  statResults <- data.frame()
+  ## DBS
+  excess <- lm(as.formula(paste0(type, ' ~ scz + SEX + nNonRefVariants + totSynonymous + meanDP +
+                                    DP20frac + birthYear + WaveNum + LCsetNum + ', paste0('PC', 1:10, collapse = ' + '))), 
+                  dataset)
+  excessTidy <- get_tidy(excess, 'scz')
+  statResults = rbind(statResults,
+                      cbind(
+                        dataset = datasetName,
+                        type = type,
+                        analysis = "Exome-wide excess",
+                        estimate = excessTidy$estimate,
+                        stderror = excessTidy$std.error,
+                        lowerConf = excessTidy$conf.low,
+                        higherConf = excessTidy$conf.high,
+                        pvalue = excessTidy$p.value
+                        ))
+  oddsRatio <- glm(as.formula(paste0('sczLogi ~ ', type,' + SEX + nNonRefVariants + totSynonymous 
+                                     + meanDP + DP20frac + birthYear + WaveNum + LCsetNum + ', 
+                                        paste0('PC', 1:10, collapse = ' + '))), 
+                      family = binomial(link = "logit"), dataset)
+  oddsRatioTidy <- get_tidy(oddsRatio, type, exponentiate = TRUE)
+  statResults = rbind(statResults,
+                      cbind(
+                        dataset = datasetName,
+                        type = type,
+                        analysis = "Odds ratios",
+                        estimate = oddsRatioTidy$estimate,
+                        stderror = oddsRatioTidy$std.error,
+                        lowerConf = oddsRatioTidy$conf.low,
+                        higherConf = oddsRatioTidy$conf.high,
+                        pvalue = oddsRatioTidy$p.value
+                        ))
+  return(statResults)
+}
+
+### Normal covariates
+
+calcStatsCov <- function(type, dataset, datasetName){
+  statResults <- data.frame()
+  ## DBS
+  excess <- lm(as.formula(paste0(type, ' ~ scz + SEX + nNonRefVariants + totSynonymous + meanDP +
+                                    DP20frac + ', paste0('PC', 1:10, collapse = ' + '))), 
+                  dataset)
+  excessTidy <- get_tidy(excess, 'scz')
+  statResults = rbind(statResults,
+                      cbind(
+                        dataset = datasetName,
+                        type = type,
+                        analysis = "Exome-wide excess",
+                        estimate = excessTidy$estimate,
+                        stderror = excessTidy$std.error,
+                        lowerConf = excessTidy$conf.low,
+                        higherConf = excessTidy$conf.high,
+                        pvalue = excessTidy$p.value
+                        ))
+  oddsRatio <- glm(as.formula(paste0('sczLogi ~ ', type,' + SEX + nNonRefVariants + totSynonymous 
+                                     + meanDP + DP20frac + ', 
+                                        paste0('PC', 1:10, collapse = ' + '))), 
+                      family = binomial(link = "logit"), dataset)
+  oddsRatioTidy <- get_tidy(oddsRatio, type, exponentiate = TRUE)
+  statResults = rbind(statResults,
+                      cbind(
+                        dataset = datasetName,
+                        type = type,
+                        analysis = "Odds ratios",
+                        estimate = oddsRatioTidy$estimate,
+                        stderror = oddsRatioTidy$std.error,
+                        lowerConf = oddsRatioTidy$conf.low,
+                        higherConf = oddsRatioTidy$conf.high,
+                        pvalue = oddsRatioTidy$p.value
+                        ))
+  return(statResults)
+}
+
+### No covariates
+
+calcStatsNoCov <- function(type, dataset, datasetName){
+  statResults <- data.frame()
+  ## DBS
+  excess <- lm(as.formula(paste0(type, ' ~ scz')), 
+                  dataset)
+  excessTidy <- get_tidy(excess, 'scz')
+  statResults = rbind(statResults,
+                      cbind(
+                        dataset = datasetName,
+                        type = type,
+                        analysis = "Exome-wide excess",
+                        estimate = excessTidy$estimate,
+                        stderror = excessTidy$std.error,
+                        lowerConf = excessTidy$conf.low,
+                        higherConf = excessTidy$conf.high,
+                        pvalue = excessTidy$p.value
+                        ))
+  oddsRatio <- glm(as.formula(paste0('sczLogi ~ ', type)), 
+                      family = binomial(link = "logit"), dataset)
+  oddsRatioTidy <- get_tidy(oddsRatio, type, exponentiate = TRUE)
+  statResults = rbind(statResults,
+                      cbind(
+                        dataset = datasetName,
+                        type = type,
+                        analysis = "Odds ratios",
+                        estimate = oddsRatioTidy$estimate,
+                        stderror = oddsRatioTidy$std.error,
+                        lowerConf = oddsRatioTidy$conf.low,
+                        higherConf = oddsRatioTidy$conf.high,
+                        pvalue = oddsRatioTidy$p.value
+                        ))
+  return(statResults)
+}
+```
+
+
+
+Now use the above models in order to calculate with and without covariates
+
+```{r calcWithCovars}
+categories = c('nURVpLIsyn', 'nURVpLImiss', 'nURVpLIdisruptive', 'nURVpLIdamaging', 'ndURVpLI')
+
+resultsStatsCovar = list()
+counter = 1
+for (type in categories){
+   results =  data.frame(
+    rbind(
+      calcStatsCovDBS(type, DBSdataURVCleanSplit1, "DBS1"),
+      calcStatsCovDBS(type, DBSdataURVCleanSplit2, "DBS2"),
+      calcStatsCovDBS(type, DBSdataURVCleanSplit3, "DBS3"),
+      calcStatsCov(type, ClindataURVCleanSplit1, "Clin1"),
+      calcStatsCov(type, ClindataURVCleanSplit2, "Clin2"),
+      calcStatsCov(type, ClindataURVCleanSplit3, "Clin3"),
+      calcStatsCov(type, SWEdataURVCleanSplit1, "SWE1"),
+      calcStatsCov(type, SWEdataURVCleanSplit2, "SWE2"),
+      calcStatsCov(type, SWEdataURVCleanSplit3, "SWE3")
+      )
+    )
+  resultsStatsCovar[[counter]] <- results
+  counter = counter +1
+}
+names(resultsStatsCovar) = categories
+resultsStatsCovar = do.call("rbind", resultsStatsCovar)
+resultsStatsCovar$model = "covariates"
+row.names(resultsStatsCovar) <- NULL
+```
+
+
+And the analysis without covariates
+
+
+```{r calcNOCovars}
+categories = c('nURVpLIsyn', 'nURVpLImiss', 'nURVpLIdisruptive', 'nURVpLIdamaging', 'ndURVpLI')
+
+resultsStatsNOcov = list()
+counter = 1
+for (type in categories){
+   results =  data.frame(
+    rbind(
+      calcStatsNoCov(type, DBSdataURVCleanSplit1, "DBS1"),
+      calcStatsNoCov(type, DBSdataURVCleanSplit2, "DBS2"),
+      calcStatsNoCov(type, DBSdataURVCleanSplit3, "DBS3"),
+      calcStatsNoCov(type, ClindataURVCleanSplit1, "Clin1"),
+      calcStatsNoCov(type, ClindataURVCleanSplit2, "Clin2"),
+      calcStatsNoCov(type, ClindataURVCleanSplit3, "Clin3"),
+      calcStatsNoCov(type, SWEdataURVCleanSplit1, "SWE1"),
+      calcStatsNoCov(type, SWEdataURVCleanSplit2, "SWE2"),
+      calcStatsNoCov(type, SWEdataURVCleanSplit3, "SWE3")
+      )
+    )
+  resultsStatsNOcov[[counter]] <- results
+  counter = counter +1
+}
+names(resultsStatsNOcov) = categories
+resultsStatsNOcov = do.call("rbind", resultsStatsNOcov)
+resultsStatsNOcov$model = "NoCov"
+row.names(resultsStatsNOcov) <- NULL
+```
+
+Try and put all together
+
+```{r MclustResAnalysis}
+allClustStats = resultsStatsNOcov %>%
+  full_join(resultsStatsCovar, by = c("dataset" = "dataset", "type" = "type", "analysis" = "analysis"))
+allClustStatsComparison = allClustStats[c("dataset", "type", "analysis", "pvalue.x", "pvalue.y")]
+allClustStatsComparison$pvalue.x = as.numeric(as.character(allClustStatsComparison$pvalue.x))
+allClustStatsComparison$pvalue.y = as.numeric(as.character(allClustStatsComparison$pvalue.y))
+allClustStatsComparison$pLogX = -log10(allClustStatsComparison$pvalue.x)
+allClustStatsComparison$pLogY = -log10(allClustStatsComparison$pvalue.y)
+```
+
+and plot the results for the different splits of datasets
+
+```{r mclustResPlot}
+library(ggplot2)
+
+corPlot = ggplot(allClustStatsComparison, aes(x=pLogX, y=pLogY, colour = analysis))+
+  geom_point() +
+  geom_smooth(method = "lm") +
+  facet_wrap(~dataset, ncol = 3)
+
+## extract correlation from lm
+library(ggpmisc)
+
+my.formula <- y ~ x
+corPlot = ggplot(allClustStatsComparison, aes(x=pLogX, y=pLogY, colour = analysis))+
+  geom_point() +
+  geom_smooth(method = "lm", formula = my.formula) +
+  facet_wrap(~dataset, ncol = 3) +
+  stat_poly_eq(formula = my.formula, 
+                aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+                parse = TRUE)
+
+my.formula <- y ~ x
+p <- ggplot(data = df, aes(x = x, y = y)) +
+   geom_smooth(method = "lm", se=FALSE, color="black", formula = my.formula) +
+   stat_poly_eq(formula = my.formula, 
+                aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+                parse = TRUE) +         
+   geom_point()
+```
+
+Plain spearman correlation
+
+```{r SpearmanCorr}
+cor.test(allClustStatsComparison[allClustStatsComparison$analysis=="Odds ratios" & allClustStatsComparison$dataset=="DBS3", "pLogX"], 
+          allClustStatsComparison[allClustStatsComparison$analysis=="Odds ratios" & allClustStatsComparison$dataset=="DBS3", "pLogY"],
+          method = "spearman")
+cor.test(allClustStatsComparison[allClustStatsComparison$analysis=="Exome-wide excess" & allClustStatsComparison$dataset=="DBS3", "pLogX"], 
+          allClustStatsComparison[allClustStatsComparison$analysis=="Exome-wide excess" & allClustStatsComparison$dataset=="DBS3", "pLogY"],
+          method = "spearman")
+```
+
+The relationship is clearly linear so let's keep things as they are.
+
+For the gene counts by status, I need to start from the row data because I need to aggregate by gene separately in each group.
+
+```{r countsBySampleAndGene}
+origin <- "/pca/originalcounts/"
+countsBySampleAndGeneDBS <- read_tsv(paste0(origin,"DBS_v3_iPSYCH_GRCh37_blacklisted_SZ_URV.urvCat_nonPsych_samples_countsBySampleAndGene.tab"))
+countsBySampleAndGeneSWE <- read_tsv(paste0(origin, "swe_blacklisted_URV_nonPsych_samples_countsBySampleAndGene.tab"))
+countsBySampleAndGeneClin <- read_tsv(paste0(origin, "clinExome_SZ_GRCh37_blacklisted_URV_nonPsych_samples_countsBySampleAndGene.tab"))
+```
+
+
+```{r dURVgenes, eval=FALSE}
+#NB there is a typo in disruptive / distruptive
+countsBySampleAndGeneClin$ndURV <- countsBySampleAndGeneClin$nURVdamaging + countsBySampleAndGeneClin$nURVdistruptive
+countsBySampleAndGeneDBS$ndURV <- countsBySampleAndGeneDBS$nURVdamaging + countsBySampleAndGeneDBS$nURVdistruptive
+countsBySampleAndGeneSWE$ndURV <- countsBySampleAndGeneSWE$nURVdamaging + countsBySampleAndGeneSWE$nURVdistruptive
+```
+
+
+Separate in the selected groups, and generate the gene counts only for the variants needed
+
+
+```{r GeneByStatusByGroupDBS}
+genecountsByStatusDBS1 = countsBySampleAndGeneDBS %>%
+  filter(sample %in% DBSdataURVCleanSplit1$IND) %>%
+  full_join(DBSdataURVCleanSplit1[c(1:6)], c("sample" = "IND")) %>%
+  group_by(gene,STATUS)%>%
+  summarise(
+    totLOFWith = sum(totLOF, na.rm = T),
+    totLOFWithout = n() - totLOFWith,
+    nURVdistruptiveWith = sum(nURVdistruptive, na.rm = T),
+    nURVdistruptiveWithout = n() - nURVdistruptiveWith,
+    nURVdamagingWith = sum(nURVdamaging, na.rm = T),
+    nURVdamagingWithout = n() - nURVdamagingWith,
+    ndURVWith = sum(ndURV, na.rm = T),
+    ndURVWithout = n() - ndURVWith
+  ) %>%
+  collect
+
+genecountsByStatusDBS3 = countsBySampleAndGeneDBS %>%
+  filter(sample %in% DBSdataURVCleanSplit3$IND) %>%
+  full_join(DBSdataURVCleanSplit3[c(1:6)], c("sample" = "IND")) %>%
+  group_by(gene,STATUS)%>%
+  summarise(
+    totLOFWith = sum(totLOF, na.rm = T),
+    totLOFWithout = n() - totLOFWith,
+    nURVdistruptiveWith = sum(nURVdistruptive, na.rm = T),
+    nURVdistruptiveWithout = n() - nURVdistruptiveWith,
+    nURVdamagingWith = sum(nURVdamaging, na.rm = T),
+    nURVdamagingWithout = n() - nURVdamagingWith,
+    ndURVWith = sum(ndURV, na.rm = T),
+    ndURVWithout = n() - ndURVWith
+  ) %>%
+  collect
+```
+
+
+On the clin
+
+```{r GeneByStatusByGroupClin}
+genecountsByStatusClin1 = countsBySampleAndGeneClin %>%
+  filter(sample %in% ClindataURVCleanSplit1$IND) %>%
+  full_join(ClindataURVCleanSplit1[c(1:6)], c("sample" = "IND")) %>%
+  group_by(gene,STATUS)%>%
+  summarise(
+    totLOFWith = sum(totLOF, na.rm = T),
+    totLOFWithout = n() - totLOFWith,
+    nURVdistruptiveWith = sum(nURVdistruptive, na.rm = T),
+    nURVdistruptiveWithout = n() - nURVdistruptiveWith,
+    nURVdamagingWith = sum(nURVdamaging, na.rm = T),
+    nURVdamagingWithout = n() - nURVdamagingWith,
+    ndURVWith = sum(ndURV, na.rm = T),
+    ndURVWithout = n() - ndURVWith
+  ) %>%
+  collect
+##
+genecountsByStatusClin2 = countsBySampleAndGeneClin %>%
+  filter(sample %in% ClindataURVCleanSplit2$IND) %>%
+  full_join(ClindataURVCleanSplit2[c(1:6)], c("sample" = "IND")) %>%
+  group_by(gene,STATUS)%>%
+  summarise(
+    totLOFWith = sum(totLOF, na.rm = T),
+    totLOFWithout = n() - totLOFWith,
+    nURVdistruptiveWith = sum(nURVdistruptive, na.rm = T),
+    nURVdistruptiveWithout = n() - nURVdistruptiveWith,
+    nURVdamagingWith = sum(nURVdamaging, na.rm = T),
+    nURVdamagingWithout = n() - nURVdamagingWith,
+    ndURVWith = sum(ndURV, na.rm = T),
+    ndURVWithout = n() - ndURVWith
+  ) %>%
+  collect
+##
+genecountsByStatusClin3 = countsBySampleAndGeneClin %>%
+  filter(sample %in% ClindataURVCleanSplit3$IND) %>%
+  full_join(ClindataURVCleanSplit3[c(1:6)], c("sample" = "IND")) %>%
+  group_by(gene,STATUS)%>%
+  summarise(
+    totLOFWith = sum(totLOF, na.rm = T),
+    totLOFWithout = n() - totLOFWith,
+    nURVdistruptiveWith = sum(nURVdistruptive, na.rm = T),
+    nURVdistruptiveWithout = n() - nURVdistruptiveWith,
+    nURVdamagingWith = sum(nURVdamaging, na.rm = T),
+    nURVdamagingWithout = n() - nURVdamagingWith,
+    ndURVWith = sum(ndURV, na.rm = T),
+    ndURVWithout = n() - ndURVWith
+  ) %>%
+  collect
+```
+
+And then on the swedish although the correlation looks similars so I'm gonna take all three groups
+
+
+```{r GeneByStatusByGroupSWE}
+countsBySampleAndGeneSWE$sample = as.character(countsBySampleAndGeneSWE$sample)
+#
+genecountsByStatusSWE1 = countsBySampleAndGeneSWE %>%
+  filter(sample %in% SWEdataURVCleanSplit1$IND) %>%
+  full_join(SWEdataURVCleanSplit1[c(1:6)], c("sample" = "IND")) %>%
+  group_by(gene,STATUS)%>%
+  summarise(
+    totLOFWith = sum(totLOF, na.rm = T),
+    totLOFWithout = n() - totLOFWith,
+    nURVdistruptiveWith = sum(nURVdistruptive, na.rm = T),
+    nURVdistruptiveWithout = n() - nURVdistruptiveWith,
+    nURVdamagingWith = sum(nURVdamaging, na.rm = T),
+    nURVdamagingWithout = n() - nURVdamagingWith,
+    ndURVWith = sum(ndURV, na.rm = T),
+    ndURVWithout = n() - ndURVWith
+  ) %>%
+  collect
+###
+genecountsByStatusSWE2 = countsBySampleAndGeneSWE %>%
+  filter(sample %in% SWEdataURVCleanSplit2$IND) %>%
+  full_join(SWEdataURVCleanSplit2[c(1:6)], c("sample" = "IND")) %>%
+  group_by(gene,STATUS)%>%
+  summarise(
+    totLOFWith = sum(totLOF, na.rm = T),
+    totLOFWithout = n() - totLOFWith,
+    nURVdistruptiveWith = sum(nURVdistruptive, na.rm = T),
+    nURVdistruptiveWithout = n() - nURVdistruptiveWith,
+    nURVdamagingWith = sum(nURVdamaging, na.rm = T),
+    nURVdamagingWithout = n() - nURVdamagingWith,
+    ndURVWith = sum(ndURV, na.rm = T),
+    ndURVWithout = n() - ndURVWith
+  ) %>%
+  collect
+###
+genecountsByStatusSWE3 = countsBySampleAndGeneSWE %>%
+  filter(sample %in% SWEdataURVCleanSplit3$IND) %>%
+  full_join(SWEdataURVCleanSplit3[c(1:6)], c("sample" = "IND")) %>%
+  group_by(gene,STATUS)%>%
+  summarise(
+    totLOFWith = sum(totLOF, na.rm = T),
+    totLOFWithout = n() - totLOFWith,
+    nURVdistruptiveWith = sum(nURVdistruptive, na.rm = T),
+    nURVdistruptiveWithout = n() - nURVdistruptiveWith,
+    nURVdamagingWith = sum(nURVdamaging, na.rm = T),
+    nURVdamagingWithout = n() - nURVdamagingWith,
+    ndURVWith = sum(ndURV, na.rm = T),
+    ndURVWithout = n() - ndURVWith
+  ) %>%
+  collect
+
+```
+
+
+First of all need to load the functions
+
+```{r}
+originF = '/faststorage/jail/project/NGSPipeline/extTADA/script/'
+functions <- dir(path=originF, pattern=".R$")
+for (func in functions){
+  source(paste0(originF,func))
+}
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+```
+
+Then we need to get the de-novo and mutation datasets from the package
+
+```{r}
+denovoDataOriginal <- read_tsv('~/ipsych/denovo/extTADA_SCZ.txt')
+names(denovoDataOriginal)[1] <- "Gene"
+denovoDataOriginal$Gene <- gsub("'", "", denovoDataOriginal$Gene)
+denovoData = denovoDataOriginal[c("Gene", "dn_silentCFPK", "dn_damaging",
+                                  "dn_lof", "mut_silentCFPK", "mut_damaging",  "mut_lof")]
+```
+
+Then we need to re-table by status the dURVs from the three datasets
+
+```{r}
+tadaCountsDBS1 <- genecountsByStatusDBS1[c("gene", "STATUS", "ndURVWith")]
+tadaCountsDBS1 = spread(tadaCountsDBS1, STATUS, ndURVWith)
+names(tadaCountsDBS1) <- c("gene", "cc_control_DBS1", "cc_case_DBS1")
+#
+tadaCountsDBS3 <- genecountsByStatusDBS3[c("gene", "STATUS", "ndURVWith")]
+tadaCountsDBS3 = spread(tadaCountsDBS3, STATUS, ndURVWith)
+names(tadaCountsDBS3) <- c("gene", "cc_control_DBS3", "cc_case_DBS3")
+#######
+tadaCountsClin1 <- genecountsByStatusClin1[c("gene", "STATUS", "ndURVWith")]
+tadaCountsClin1 = spread(tadaCountsClin1, STATUS, ndURVWith)
+names(tadaCountsClin1) <- c("gene", "cc_control_Clin1", "cc_case_Clin1")
+#
+tadaCountsClin2 <- genecountsByStatusClin2[c("gene", "STATUS", "ndURVWith")]
+tadaCountsClin2 = spread(tadaCountsClin2, STATUS, ndURVWith)
+names(tadaCountsClin2) <- c("gene", "cc_control_Clin2", "cc_case_Clin2")
+#
+tadaCountsClin3 <- genecountsByStatusClin3[c("gene", "STATUS", "ndURVWith")]
+tadaCountsClin3 = spread(tadaCountsClin3, STATUS, ndURVWith)
+names(tadaCountsClin3) <- c("gene", "cc_control_Clin3", "cc_case_Clin3")
+########
+tadaCountsSWE1 <- genecountsByStatusSWE1[c("gene", "STATUS", "ndURVWith")]
+tadaCountsSWE1 = spread(tadaCountsSWE1, STATUS, ndURVWith)
+names(tadaCountsSWE1) <- c("gene", "cc_control_SWE1", "cc_case_SWE1")
+#
+tadaCountsSWE2 <- genecountsByStatusSWE2[c("gene", "STATUS", "ndURVWith")]
+tadaCountsSWE2 = spread(tadaCountsSWE2, STATUS, ndURVWith)
+names(tadaCountsSWE2) <- c("gene", "cc_control_SWE2", "cc_case_SWE2")
+#
+tadaCountsSWE3 <- genecountsByStatusSWE3[c("gene", "STATUS", "ndURVWith")]
+tadaCountsSWE3 = spread(tadaCountsSWE3, STATUS, ndURVWith)
+names(tadaCountsSWE3) <- c("gene", "cc_control_SWE3", "cc_case_SWE3")
+```
+
+Then I need to use the genes and in the order of the de-novo mutations
+
+```{r}
+tadaCountsAll = denovoData %>%
+  left_join(tadaCountsDBS1, by = c("Gene" = "gene")) %>%
+  left_join(tadaCountsDBS3, by = c("Gene" = "gene")) %>%
+  left_join(tadaCountsClin1,  by = c("Gene" = "gene")) %>%
+  left_join(tadaCountsClin2,  by = c("Gene" = "gene")) %>%
+  left_join(tadaCountsClin3,  by = c("Gene" = "gene")) %>%
+  left_join(tadaCountsSWE1,  by = c("Gene" = "gene")) %>%
+  left_join(tadaCountsSWE2,  by = c("Gene" = "gene")) %>%
+  left_join(tadaCountsSWE3,  by = c("Gene" = "gene"))
+```
+
+zero the colums not existing in our counts but existing in de-novo dataset, if any
+
+```{r}
+colsToClean <- c("cc_control_DBS1","cc_case_DBS1", "cc_control_DBS3","cc_case_DBS3", 
+                 "cc_control_Clin1","cc_case_Clin1", "cc_control_Clin2","cc_case_Clin2", "cc_control_Clin3","cc_case_Clin3",
+                 "cc_control_SWE1", "cc_case_SWE1", "cc_control_SWE2", "cc_case_SWE2", "cc_control_SWE3", "cc_case_SWE3")
+for (colName in colsToClean){
+    tadaCountsAll[[colName]] <- na.zero(tadaCountsAll[[colName]])
+}
+# remove the silent de-novo because they don't match with mutation rates
+# and also re-ordering to keep the same order
+tadaCountsAll = tadaCountsAll[c("Gene", "mut_silentCFPK", "mut_damaging", "mut_lof", 
+                                "dn_silentCFPK", "dn_damaging", "dn_lof", 
+                                "cc_case_DBS1", "cc_case_DBS3", 
+                                "cc_case_Clin1", "cc_case_Clin2", "cc_case_Clin3",
+                                "cc_case_SWE1", "cc_case_SWE2", "cc_case_SWE3", 
+                                "cc_control_DBS1", "cc_control_DBS3",
+                                "cc_control_Clin1", "cc_control_Clin2", "cc_control_Clin3",
+                                "cc_control_SWE1", "cc_control_SWE2", "cc_control_SWE3")]
+tadaCountsAll = as.data.frame(tadaCountsAll)
+```
+
+
+We use only ONE de-novo category, matching the chosen URV category used for the populations
+
+```{r}
+tadaCountsAllOneCat = tadaCountsAll[c("Gene", "mut_lof", "dn_lof",
+                                "cc_case_DBS1", "cc_case_DBS3", 
+                                "cc_case_Clin1", "cc_case_Clin2", "cc_case_Clin3",
+                                "cc_case_SWE1", "cc_case_SWE2", "cc_case_SWE3", 
+                                "cc_control_DBS1", "cc_control_DBS3",
+                                "cc_control_Clin1", "cc_control_Clin2", "cc_control_Clin3",
+                                "cc_control_SWE1", "cc_control_SWE2", "cc_control_SWE3")]
+mcmcSCZOneCat <- extTADA(modelName = DNandCCextTADA,
+  inputData = tadaCountsAllOneCat, ## Input data should be formatted as above
+  Ndn = c(1077), ##NB it is 1 de novo category - should be same as mutation rates
+  Ncase = c(1712,1122,458,253,567,1960,1468,203), ##8 populations and One category
+  Ncontrol = c(3375,1682,367,196,350,2699,1121,232), ##8 populations and One category
+  nIteration = 20000, ## Number of iterations: should be upto higher for real data
+  nThin = 20, ## Depend on users, but it can be floor(nIteration/1000)
+  nCore = parallel::detectCores(), # doesn't make sense to run it on one core
+  nChain = 3 ## in the paper they use 3 chains for 20k iterations
+  )
+saveRDS(mcmcSCZOneCat, file = "extTADA_mcmcSCZOneCat_20kIterations3Chains.RData")
+```
+
+
+
+Save Data
+```{r}
+save.image("SZmeta_URVclean_popClust_extTADA.RData")
+```
+
+
